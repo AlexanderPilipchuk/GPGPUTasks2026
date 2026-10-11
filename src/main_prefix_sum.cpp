@@ -70,7 +70,7 @@ void run(int argc, char** argv)
 
     const unsigned int tile_count = 1 + (n - 1) / SCAN_TILE_SIZE;
     gpu::gpu_mem_32u input_gpu(n), prefix_sum_gpu(n);
-    gpu::gpu_mem_32u tile_status_gpu(tile_count), tile_aggregate_gpu(tile_count), tile_prefix_gpu(tile_count);
+    gpu::gpu_mem_any tile_state_gpu(tile_count * sizeof(uint64_t));
     gpu::gpu_mem_32u next_tile_gpu(1);
 
     // Прогружаем входные данные по PCI-E шине: CPU RAM -> GPU VRAM
@@ -89,10 +89,10 @@ void run(int argc, char** argv)
         timer t;
 
         ocl_reset_scan_state.execAsynchronized(
-            reset_work_size, tile_status_gpu, next_tile_gpu, tile_count);
+            reset_work_size, tile_state_gpu, next_tile_gpu, tile_count);
         ocl_scan.exec(
-            scan_work_size, input_gpu, prefix_sum_gpu, tile_status_gpu,
-            tile_aggregate_gpu, tile_prefix_gpu, next_tile_gpu, n, tile_count);
+            scan_work_size, input_gpu, prefix_sum_gpu, tile_state_gpu,
+            next_tile_gpu, n, tile_count);
 
         times.push_back(t.elapsed());
     }

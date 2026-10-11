@@ -7,14 +7,14 @@
 
 __attribute__((reqd_work_group_size(GROUP_SIZE, 1, 1)))
 __kernel void fill_buffer_with_zeros(
-    volatile __global uint* tile_status,
+    volatile __global ulong* tile_state,
     volatile __global uint* next_tile,
     unsigned int n)
 {
     const unsigned int index = get_global_id(0);
 
     if (index < n)
-        tile_status[index] = 0;
+        tile_state[index] = 0ul;
 
     if (index == 0)
         next_tile[0] = 0;

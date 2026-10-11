@@ -6,6 +6,7 @@
 #include "../defines.h"
 
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
+#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
 
 #ifndef SCAN_USE_SUBGROUPS
 #define SCAN_USE_SUBGROUPS 0
@@ -27,9 +28,7 @@ __attribute__((reqd_work_group_size(GROUP_SIZE, 1, 1)))
 __kernel void SCAN_KERNEL_NAME(
     __global const uint* input,
     __global       uint* output,
-    volatile __global uint* tile_status,
-    __global       uint* tile_aggregate,
-    __global       uint* tile_prefix,
+    volatile __global ulong* tile_state,
     volatile __global uint* next_tile,
     unsigned int n,
     unsigned int tile_count)
@@ -122,37 +121,35 @@ __kernel void SCAN_KERNEL_NAME(
             const uint aggregate = exchange[0];
             uint prefix_before_tile = 0;
 
-            tile_aggregate[tile] = aggregate;
-
             if (tile == 0) {
-                tile_prefix[tile] = aggregate;
-                mem_fence(CLK_GLOBAL_MEM_FENCE);
-                atomic_xchg(tile_status + tile, TILE_PREFIX_READY);
+                atom_xchg(tile_state + tile,
+                          ((ulong)TILE_PREFIX_READY << 32) | (ulong)aggregate);
             } else {
-                mem_fence(CLK_GLOBAL_MEM_FENCE);
-                atomic_xchg(tile_status + tile, TILE_AGGREGATE_READY);
+                atom_xchg(tile_state + tile,
+                          ((ulong)TILE_AGGREGATE_READY << 32) | (ulong)aggregate);
 
                 uint accumulated = 0;
                 unsigned int predecessor = tile - 1;
                 while (1) {
-                    uint status;
+                    ulong state;
                     do {
-                        status = atomic_add(tile_status + predecessor, 0u);
-                    } while (status == TILE_INVALID);
+                        state = atom_add(tile_state + predecessor, 0ul);
+                    } while (state == TILE_INVALID);
 
-                    mem_fence(CLK_GLOBAL_MEM_FENCE);
+                    const uint status = (uint)(state >> 32);
+                    const uint value = (uint)state;
                     if (status == TILE_PREFIX_READY) {
-                        prefix_before_tile = accumulated + tile_prefix[predecessor];
+                        prefix_before_tile = accumulated + value;
                         break;
                     }
 
-                    accumulated += tile_aggregate[predecessor];
+                    accumulated += value;
                     --predecessor;
                 }
 
-                tile_prefix[tile] = prefix_before_tile + aggregate;
-                mem_fence(CLK_GLOBAL_MEM_FENCE);
-                atomic_xchg(tile_status + tile, TILE_PREFIX_READY);
+                atom_xchg(tile_state + tile,
+                          ((ulong)TILE_PREFIX_READY << 32) |
+                          (ulong)(prefix_before_tile + aggregate));
             }
 
             tile_offset = prefix_before_tile;
