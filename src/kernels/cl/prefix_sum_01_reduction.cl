@@ -112,6 +112,7 @@ __kernel void SCAN_KERNEL_NAME(
 
         const uint thread_inclusive = exchange[src + lane];
 #endif
+        barrier(CLK_LOCAL_MEM_FENCE);
         const uint thread_offset = thread_inclusive - thread_sum;
         if (lane + 1 == GROUP_SIZE)
             exchange[0] = thread_inclusive;
